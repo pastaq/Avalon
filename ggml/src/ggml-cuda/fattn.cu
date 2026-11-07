@@ -701,7 +701,14 @@ static best_fattn_kernel ggml_cuda_get_best_fattn_kernel(const int device, const
         memcpy(&logit_softcap, (const float *) KQV->op_params + 2, sizeof(float));
         const bool ok = (rdna || nv) && gqa_opt_applies && logit_softcap == 0.0f && K->ne[0] == 256 && V->ne[0] == 256 &&
             gqa_ratio % 4 == 0 && gqa_ratio % 8 != 0 && Q->ne[1] > 8 && Q->ne[3] == 1 && mask->ne[1] == 16;
-        return ok ? BEST_FATTN_KERNEL_MMA_F16 : BEST_FATTN_KERNEL_NONE;
+        if (ok) {
+            return BEST_FATTN_KERNEL_MMA_F16;
+        }
+        // AMD without WMMA (GCN/CDNA, RDNA2): the tile kernel, gathering the listed q8_0 K / q4_0 V rows (fattn-tile.cuh)
+        const bool tile = GGML_CUDA_CC_IS_AMD(cc) && !amd_wmma_available(cc) && gqa_opt_applies && logit_softcap == 0.0f &&
+            K->ne[0] == 256 && V->ne[0] == 256 && K->type == GGML_TYPE_Q8_0 && V->type == GGML_TYPE_Q4_0 &&
+            gqa_ratio % 2 == 0 && Q->ne[3] == 1 && mask->ne[1] == 16;
+        return tile ? BEST_FATTN_KERNEL_TILE : BEST_FATTN_KERNEL_NONE;
     }
 
     if (mask && mask->ne[2] != 1) {
