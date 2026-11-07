@@ -18,6 +18,10 @@ template <int N, typename B>
 static __device__ __forceinline__ void fwht_set_rows_body(const fwht_set_rows_args & a, const int64_t r, const int lane) {
     const int64_t n_rows = a.n_rows;
     constexpr int warp_size = ggml_cuda_get_physical_warp_size();
+#if defined(GGML_USE_HIP) && (defined(__GFX9__) || defined(__GFX8__))
+    GGML_UNUSED_VARS(a, r, lane, n_rows);
+    NO_DEVICE_CODE;
+#else
     static_assert(warp_size == 32 && N % 32 == 0, "a block per register index");
 
     if (r >= n_rows) {
@@ -69,4 +73,5 @@ static __device__ __forceinline__ void fwht_set_rows_body(const fwht_set_rows_ar
     } else {
         quantize_warp_q8_0_n<el_w>(reg, y, lane, el_w);
     }
+#endif // wave64
 }

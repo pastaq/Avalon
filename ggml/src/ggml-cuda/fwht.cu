@@ -338,7 +338,7 @@ void ggml_cuda_fwht_gate_launch(const float * rows, int64_t n_rows, const fwht_g
 int ggml_cuda_try_fuse_fwht_gate(ggml_backend_cuda_context & ctx, ggml_cgraph * cgraph, int i) {
     static const bool disabled = getenv("GGML_CUDA_DISABLE_FWHT_GATE") != nullptr;
     int idx[4];
-    if (disabled || !fwht_gate_match(cgraph, i, idx)) {
+    if (disabled || ggml_cuda_info().devices[ctx.device].warp_size != 32 || !fwht_gate_match(cgraph, i, idx)) {
         return 0;
     }
     // the nodes of the group: the four computing ones and the views of them in between (a view of a tensor computed
@@ -427,7 +427,7 @@ static bool fwht_set_rows_match(const ggml_cgraph * cgraph, int i, int * sr_idx)
 int ggml_cuda_try_fuse_fwht_set_rows(ggml_backend_cuda_context & ctx, ggml_cgraph * cgraph, int i) {
     static const bool disabled = getenv("GGML_CUDA_DISABLE_FWHT_SET_ROWS") != nullptr;
     int k;
-    if (disabled || !fwht_set_rows_match(cgraph, i, &k)) {
+    if (disabled || ggml_cuda_info().devices[ctx.device].warp_size != 32 || !fwht_set_rows_match(cgraph, i, &k)) {
         return 0;
     }
     int nodes[8];
@@ -483,7 +483,7 @@ int ggml_cuda_fwht_gate_after_fattn(ggml_backend_cuda_context & ctx, ggml_cgraph
         j++;
     }
     int idx[4];
-    if (disabled || fa->op != GGML_OP_FLASH_ATTN_EXT || fa->type != GGML_TYPE_F32 || !ggml_is_contiguous(fa) ||
+    if (disabled || ggml_cuda_info().devices[ctx.device].warp_size != 32 || fa->op != GGML_OP_FLASH_ATTN_EXT || fa->type != GGML_TYPE_F32 || !ggml_is_contiguous(fa) ||
             j >= cgraph->n_nodes || !fwht_gate_match(cgraph, j, idx)) {
         return 0;
     }

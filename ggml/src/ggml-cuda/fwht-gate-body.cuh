@@ -17,6 +17,10 @@ template <int N>
 static __device__ __forceinline__ void fwht_gate_row(const float * row, const int64_t r, const int lane,
                                                      const fwht_gate_args & a) {
     constexpr int warp_size = ggml_cuda_get_physical_warp_size();
+#if defined(GGML_USE_HIP) && (defined(__GFX9__) || defined(__GFX8__))
+    GGML_UNUSED_VARS(row, r, lane, a);
+    NO_DEVICE_CODE;
+#else
     static_assert(warp_size == QK8_1, "a q8_1 block per register index");
     static constexpr int el_w = N / warp_size;
     float reg[el_w];
@@ -69,4 +73,5 @@ static __device__ __forceinline__ void fwht_gate_row(const float * row, const in
             }
         }
     }
+#endif // wave64
 }

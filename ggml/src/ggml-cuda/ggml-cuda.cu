@@ -6511,7 +6511,8 @@ static void ggml_cuda_graph_evaluate_and_capture(ggml_backend_cuda_context * cud
                 }
             }
             cuda_ctx->mk = nullptr;
-            if (mk_enabled && graph_tokens <= mk_max_tokens) {
+            // the multi-task kernel's bodies are wave32 only (fwht-sr.cuh)
+            if (mk_enabled && ggml_cuda_info().devices[cuda_ctx->device].warp_size == 32 && graph_tokens <= mk_max_tokens) {
                 if (!cuda_ctx->mk_owned) {
                     cuda_ctx->mk_owned = new ggml_cuda_mk();
                 }

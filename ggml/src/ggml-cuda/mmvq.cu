@@ -1585,6 +1585,10 @@ static __global__ void mul_mat_vec_q_moe_grouped_half(
         const float up_min, const float up_max, const float gate_min, const float gate_max) {
     constexpr int c_ncols = MOE_GROUP_COLS;
     constexpr int warp_size = ggml_cuda_get_physical_warp_size();
+#if defined(GGML_USE_HIP) && (defined(__GFX9__) || defined(__GFX8__))
+    GGML_UNUSED_VARS(up_entries, gate_entries, vy, act_ids, groups, fusion, dst, ncols_x, nchannels_y, nrows_x, stride_row_x, stride_channel_y, stride_channel_dst, up_min, up_max, gate_min, gate_max);
+    NO_DEVICE_CODE;
+#else
     static_assert(warp_size == 32, "a half-warp is 16 lanes");
     constexpr int qk  = ggml_cuda_type_traits<type>::qk;
     constexpr int qi  = ggml_cuda_type_traits<type>::qi;
@@ -1702,6 +1706,7 @@ static __global__ void mul_mat_vec_q_moe_grouped_half(
     if constexpr (!has_clamp) {
         GGML_UNUSED_VARS(up_min, up_max, gate_min, gate_max);
     }
+#endif // wave64
 }
 
 // the down products of the grouped entries with `lanes` lanes per weight row (Strata's sub-warp rows: K = 640 is 40 chunks
@@ -1716,6 +1721,10 @@ static __global__ void mul_mat_vec_q_moe_grouped_sub(
         const uint32_t stride_channel_y, const uint32_t stride_channel_dst) {
     constexpr int c_ncols = MOE_GROUP_COLS;
     constexpr int warp_size = ggml_cuda_get_physical_warp_size();
+#if defined(GGML_USE_HIP) && (defined(__GFX9__) || defined(__GFX8__))
+    GGML_UNUSED_VARS(entries, vy, act_ids, groups, dst, ncols_x, nchannels_y, nrows_x, stride_row_x, stride_channel_y, stride_channel_dst);
+    NO_DEVICE_CODE;
+#else
     static_assert(warp_size == 32 && 32 % lanes == 0, "lanes divide a warp of 32");
     constexpr int qk  = ggml_cuda_type_traits<type>::qk;
     constexpr int qi  = ggml_cuda_type_traits<type>::qi;
@@ -1769,6 +1778,7 @@ static __global__ void mul_mat_vec_q_moe_grouped_sub(
         }
     }
     ggml_cuda_pdl_lc();
+#endif // wave64
 }
 
 template<ggml_type type>
