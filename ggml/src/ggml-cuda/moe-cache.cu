@@ -9274,11 +9274,17 @@ static void moe_split_gpu_bench(moe_hosted_state * st, moe_cache_device & device
     }
     double us = 0.0;
     if (ok) {
+        // as ggml_cuda_moe_hosted_block: the q8_1 of the GLU fused into its kernel on 32-wide warps, a kernel after it otherwise
+        const bool q8_fused = ggml_cuda_info().devices[device.logical].warp_size == QK8_1;
         const auto call = [&](int it) {
             const uint64_t * plan = d_plan + (size_t) it * 3 * R;
             ggml_cuda_moe_cache_mmv_fused(wtype, d_act, plan, plan + R, d_ids, d_glu, n_embd, n_ff, R, tokens,
-                                          -INFINITY, INFINITY, -INFINITY, INFINITY, stream, d_mid, padded_ff / QK8_1, d_count,
-                                          nullptr, tokens);
+                                          -INFINITY, INFINITY, -INFINITY, INFINITY, stream, q8_fused ? d_mid : nullptr,
+                                          q8_fused ? padded_ff / QK8_1 : 0, q8_fused ? d_count : nullptr, nullptr, tokens);
+            if (!q8_fused) {
+                quantize_row_q8_1_cuda(d_glu, nullptr, d_mid, wtype, n_ff, n_ff, (int64_t) R * n_ff, (int64_t) R * n_ff,
+                                       padded_ff, R, 1, 1, stream);
+            }
             ggml_cuda_moe_cache_mmv(dtype, d_mid, plan + 2 * R, nullptr, d_out, n_ff, n_embd, R, R, stream, nullptr, tokens);
         };
         for (int it = 0; it < warm; it++) {
@@ -10833,7 +10839,9 @@ int ggml_cuda_moe_hosted_block(ggml_backend_cuda_context & ctx, ggml_cgraph * cg
     char * q8_mid = st->d_q8_mid;
     // up / gate / swiglu, and the q8_1 of the result for down written by the same kernel (GGML_CUDA_MOE_Q8_FUSED=0: a
     // quantization kernel after it)
-    static const bool q8_fused = !getenv("GGML_CUDA_MOE_Q8_FUSED") || atoi(getenv("GGML_CUDA_MOE_Q8_FUSED")) != 0;
+    static const bool q8_fused_env = !getenv("GGML_CUDA_MOE_Q8_FUSED") || atoi(getenv("GGML_CUDA_MOE_Q8_FUSED")) != 0;
+    // the fused kernel writes a q8_1 block per warp: 32-wide warps only
+    const bool q8_fused = q8_fused_env && ggml_cuda_info().devices[ctx.device].warp_size == QK8_1;
     // the plan's chunk list (written after it by the kernel that copies it): the rows of one expert computed together
     const auto groups_of = [&](const uint64_t * plan) -> const int32_t * {
         return n_tokens >= 2 && rows <= MOE_GROUP_MAX_ROWS ? (const int32_t *) (plan + 3 * rows) : nullptr;
